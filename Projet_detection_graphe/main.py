@@ -8,7 +8,7 @@ import detection_des_dealers as ddd
 base_de_donnees.clear_database()
 
 # Creation base de donnees
-nb_membres = input("Entrez la taille du graphe: ")
+nb_membres = input("Entrez le nombre de population dans la communaute: ")
 societe = base_de_donnees.generate_communite(nb_membres)
 relations = base_de_donnees.generate_friendship(societe)
 societe = base_de_donnees.simulation_transaction(societe, relations)
