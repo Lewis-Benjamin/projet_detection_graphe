@@ -1,7 +1,8 @@
 #coding: utf-8
 
 from neo4j import GraphDatabase
-
+import etudiant
+import classification
 
 #Authentification dans le neo4j
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "12345678"))
@@ -12,44 +13,21 @@ def creation_sommet(student):
         id: $id,
         niveau: $niveau,
         sexe: $sexe,
-        compte_banc: $compte_banc,
-        solde: $solde,
-        num_tel: $num_tel,
-        taux_d_addiction: $taux_d_addiction,
-        nb_prostitution: $nb_prostitution
+        num_tel: $num_tel
     })
     """
 
-    addiction = 0
-    prostitution = 0
     if student.sexe == 0:
         sexe = "Masculin"
     else:
         sexe = "Feminin"
-
-    try:
-        student.taux_d_addiction
-    except AttributeError:
-        pass
-    else:
-        addiction = student.taux_d_addiction
-        try:
-            student.taux_de_prostitution
-        except AttributeError:
-            pass
-        else:
-            prostitution = student.taux_de_prostitution
 
     with driver.session() as session:
         session.run(query,
                     id=student.id,
                     niveau=student.niveau,
                     sexe=sexe,
-                    compte_banc=student.compte_banc,
-                    solde=student.solde,
-                    num_tel=student.num_tel,
-                    taux_d_addiction=addiction,
-                    nb_prostitution=prostitution
+                    num_tel=student.num_tel
                     )
         
 def creation_lien_amitier(personneA, personneB):
@@ -108,47 +86,38 @@ def creation_lien_fournisseur(personneA, personneB):
                     id2=personneB
                     )
 
-def creation_base_de_donnees(societe: list, graphe: dict):
-    trouver_personne = lambda communaute, id: next(
-        (p for p in communaute if p.id == id), None
-    )
+def creation_base_de_donnees(graphe: dict):
+    verification_id = list()
+    historique_de_convertion = dict()
 
-    for sommet in societe:
-        creation_sommet(sommet)
+    for noeud in list(graphe.keys()):
+        new_personne = etudiant.Etudiant()
+        while new_personne.id in verification_id:
+            new_personne.rectification_id()
+        verification_id.append(new_personne.id)
+        historique_de_convertion[noeud] = new_personne.id
+        creation_sommet(new_personne)
+
+    return historique_de_convertion
+
+def creation_liens(graphe: dict, history: dict):
+    fournisseurs = classification.classification_fournisseurs(graphe)
+    dealers = classification.classification_dealers(graphe, fournisseurs)
+    consommateurs = classification.classification_consommateurs(graphe, fournisseurs, dealers)
+    etudiants = classification.classification_etudiant(graphe, fournisseurs, dealers, consommateurs)
 
     for sommet, voisins in graphe.items():
-        personne = trouver_personne(societe, sommet)
-
+        personneA = history[sommet]
         for voisin in voisins:
-            creation_lien_amitier(sommet, voisin)
+            personneB = history[voisin]
+            creation_lien_amitier(personneA, personneB)
+            if sommet in fournisseurs and voisin in fournisseurs:
+                creation_lien_fournisseur(personneA, personneB)
+            elif sommet in fournisseurs and voisin in dealers:
+                creation_lien_dealer(personneA, personneB)
+            elif sommet in dealers and voisin in consommateurs:
+                creation_lien_client(personneA, personneB)
 
-            voisin_obj = trouver_personne(societe, voisin)
-
-            if personne is None or voisin_obj is None:
-                continue
-
-            personne_est_dealer      = hasattr(personne, 'clients')
-            personne_est_fournisseur = hasattr(personne, 'dealers')
-            personne_est_client      = hasattr(personne, 'taux_de_prostitution')
-
-            voisin_est_dealer        = hasattr(voisin_obj, 'clients')
-            voisin_est_fournisseur   = hasattr(voisin_obj, 'dealers')
-
-            if personne_est_dealer:
-                if voisin_est_fournisseur:
-                    # dealer(sommet) -[:FOURNISSEUR_CONNECTE_A]-> fournisseur(voisin)
-                    creation_lien_fournisseur(sommet, voisin)
-                elif voisin_est_dealer:
-                    # fournisseur(voisin) -[:FOURNISSEUR_DE]-> dealer(sommet)
-                    creation_lien_dealer(voisin, sommet)
-            elif personne_est_fournisseur:
-                if voisin_est_dealer:
-                    # fournisseur(sommet) -[:FOURNISSEUR_DE]-> dealer(voisin)
-                    creation_lien_dealer(sommet, voisin)
-            elif personne_est_client:
-                if voisin_est_dealer:
-                    # client(sommet) -[:CLIENT_DE]-> dealer(voisin)
-                    creation_lien_client(voisin, sommet)
 
 def clear_database():
     with driver.session() as session:
