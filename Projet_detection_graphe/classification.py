@@ -1,16 +1,6 @@
 #coding: utf-8
 
 import random
-import fournisseur
-import etudiant
-import creation_graph
-
-def trouver_personne(id, communaute):
-    for personne in communaute:
-        if personne.id == id:
-            break
-    
-    return personne
 
 def parcours_largeur(graph:dict, depart):
     marque = list()
@@ -51,100 +41,69 @@ def detection_clique(graph: dict):
                         break
                 if not valid:
                     break
-            if valid and len(clique) >= 5:
+            if valid and len(clique) >= 3:
                 cliques_vus.add(frozenset(clique))
     
     return cliques_vus
 
-def classification_fournisseurs_etudiants(noeud, verification_id: list, fournisseurs: list):
-    if noeud in fournisseurs:
-        noeud_classifie = fournisseur.Fournisseur()
-    else:
-        noeud_classifie = etudiant.Etudiant()
-
-    id_noeud = noeud_classifie.id
-
-    # Verifier les repetitions d'ids
-    while id_noeud in verification_id:
-        noeud_classifie.rectification_id()
-        id_noeud = noeud_classifie.id
-
-    verification_id.append(noeud_classifie.id)
-
-    return noeud_classifie
-
-def generation_sommet_classifie(graph:dict):
-    graphe_classifie = dict()
+def classification_fournisseurs(graphe: dict):
+    reseaux_fournisseur = detection_clique(graphe)
     fournisseurs = list()
-    reseaux_fournisseurs = detection_clique(graph)
-    vefirfication_id = list()
-    # une liste pour garder les noeuds classifie
-    noeuds_classifie = list()
-    # garder l'historique de classification pour savoir quel noeud a obtenu quel classe
-    historique_classification = dict()
+    suspects = list()
+    for liste in reseaux_fournisseur:
+        for noeud in liste:
+            if noeud not in suspects:
+                suspects.append(noeud)
 
-    for sets in reseaux_fournisseurs:
-        for noeud in sets:
+    fournisseurs = verfication_fournisseur(graphe, suspects)
+
+    return fournisseurs
+
+def verfication_fournisseur(graph: dict, suspects: list):
+    fournisseurs = list()
+    for noeud in suspects:
+        verif = 0
+        if len(graph[noeud]) > 5:
+            for voisin in graph[noeud]:
+                if voisin in suspects:
+                    verif += 1
+        if verif >= 3:
             fournisseurs.append(noeud)
 
-    for noeud in list(graph.keys()):
-        noeud_classifie = classification_fournisseurs_etudiants(noeud, vefirfication_id, fournisseurs)
-        noeuds_classifie.append(noeud_classifie)
-        vefirfication_id.append(noeud_classifie.id)
-        historique_classification[noeud] = noeud_classifie.id
+    return fournisseurs
 
-    return noeuds_classifie, historique_classification
+def classification_dealers(graphe: dict, fournisseurs: list):
+    dealers = list()
+    for noeud in fournisseurs:
+        for voisin in graphe[noeud]:
+            if voisin not in fournisseurs and voisin not in dealers:
+                dealers.append(voisin)
 
-def generation_graphe_classifie(graphe: dict):
-    graphe_classifie = dict()
-    liste_noeuds_clasifie, historique = generation_sommet_classifie(graphe)
+    return dealers
 
-    for noeud, voisins in graphe.items():
-        voisins_classifies = set()
-        for voisin in voisins:
-            voisins_classifies.add(historique[voisin])
-        graphe_classifie[historique[noeud]] = voisins_classifies
+def classification_consommateurs(graphe: dict, fourniseurs: list, dealers: list):
+    consommateurs = list()
+    for noeud in dealers:
+        for voisin in graphe[noeud]:
+            if voisin not in dealers and voisin not in fourniseurs and voisin not in consommateurs:
+                consommateurs.append(voisin)
 
-    classification_dealers(graphe_classifie, liste_noeuds_clasifie)
-    classifiction_consommateurs(graphe_classifie, liste_noeuds_clasifie)
-    #confirmer_payment_fournisseurs(liste_noeuds_clasifie)
-    
-    return liste_noeuds_clasifie, graphe_classifie
+    return consommateurs
 
-def classification_dealers(graphe: dict, liste_sommets: list):
-    for noeud in graphe.keys():
-        personne = trouver_personne(noeud, liste_sommets)
-        try:
-            personne.dealers
-        except AttributeError:
-            pass
-        else:
-            for place in range(len(liste_sommets)):
-                if liste_sommets[place].id in graphe[noeud]:
-                    liste_sommets[place] = personne.corruption(liste_sommets[place])
+def classification_etudiant(graphe: dict, fournisseurs:list, dealers: list, consommateurs: list):
+    etudiants = list()
+    for noeud in list(graphe.keys()):
+        if noeud not in fournisseurs and noeud not in dealers and noeud not in consommateurs and noeud not in etudiants:
+            etudiants.append(noeud)
 
+    return etudiants
 
-def classifiction_consommateurs(graphe: dict, liste_sommets: list):
-    for noeud in graphe.keys():
-        personne = trouver_personne(noeud, liste_sommets)
-        try:
-            personne.clients
-        except AttributeError:
-            pass
-        else:
-            for place in range(len(liste_sommets)):
-                if liste_sommets[place].id in graphe[noeud]:
-                    liste_sommets[place] = personne.transaction(liste_sommets[place])
+def generation_communaute(graphe: dict):
+    fournisseurs = classification_fournisseurs(graphe)
+    dealers = classification_dealers(graphe, fournisseurs)
+    consommateurs = classification_consommateurs(graphe, fournisseurs, dealers)
+    etudiants = classification_etudiant(graphe, fournisseurs, dealers, consommateurs)
 
-def confirmer_payment_fournisseurs(liste_sommets: list):
-    for sommet in liste_sommets:
-        try:
-            sommet.dealers
-        except AttributeError:
-            pass
-        else:
-            if sommet.dealers:
-                for Dealer in sommet.dealers:
-                    produit_vendu = Dealer.nb_transaction
-                    sommet.solde += (71*0.8*produit_vendu)
-                    Dealer.solde -= (71*0.8*produit_vendu)
+    communaute = [fournisseurs, dealers, consommateurs, etudiants]
+
+    return communaute
